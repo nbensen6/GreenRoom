@@ -30,6 +30,8 @@ import {
 import type { Settlement, Recoup } from "@/db/schema";
 import { Logomark } from "@/components/brand/logo";
 import { AISettlePanel } from "./ai-panel";
+import { parseReviewState } from "@/lib/settlement-review";
+import { ReviewStatusCard, SendForReviewButton } from "./review-status";
 
 const RECOUP_LABELS: Record<Recoup["category"], string> = {
   marketing: "Marketing",
@@ -78,6 +80,7 @@ export default async function SettlePage({
   const disputedRecoups = recoups.filter((r) => r.status === "disputed");
   const isDisputed = settlement?.status === "disputed" || settlement?.status === "revised" || !!settlement?.disputedAt;
   const disputedRecoupValue = disputedRecoups.reduce((s, r) => s + r.amount, 0);
+  const review = settlement ? parseReviewState(settlement.reviewJson) : null;
 
   return (
     <div className={`px-12 py-10 max-w-7xl ${isDisputed ? "bg-gradient-to-b from-rose-50/30 via-canvas to-canvas" : ""}`}>
@@ -132,6 +135,16 @@ export default async function SettlePage({
       {settlement && (
         <div className="mt-6">
           <AISettlePanel showId={show.id} />
+        </div>
+      )}
+
+      {settlement && (
+        <div className="mt-6">
+          {review ? (
+            <ReviewStatusCard review={review} showId={show.id} />
+          ) : (
+            <SendForReviewButton showId={show.id} />
+          )}
         </div>
       )}
 
