@@ -29,6 +29,7 @@ import {
 } from "@/lib/format";
 import type { Settlement, Recoup } from "@/db/schema";
 import { Logomark } from "@/components/brand/logo";
+import { AISettlePanel } from "./ai-panel";
 
 const RECOUP_LABELS: Record<Recoup["category"], string> = {
   marketing: "Marketing",
@@ -124,6 +125,12 @@ export default async function SettlePage({
 
       {settlement && (
         <LifecycleBar settlement={settlement} disputedRecoups={disputedRecoups.length} />
+      )}
+
+      {settlement && (
+        <div className="mt-6">
+          <AISettlePanel showId={show.id} />
+        </div>
       )}
 
       <div className="space-y-6 mt-6">
