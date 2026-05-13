@@ -28,6 +28,23 @@ WHAT TO LOOK FOR (contradiction patterns)
 WHAT TO OUTPUT
 You return a single JSON object matching the provided schema. Be specific and quote evidence verbatim from the source fields. Do not editorialize or add advice beyond what the data supports. If nothing contradicts, say so plainly — confidence high, empty flags array, status summary matches the structured state.
 
+THE BOTTOM LINE (most important field)
+Mariana scans these in seconds — give her the answer first. The 'bottom_line' field is a 1-2 sentence plain-English headline that leads with the OUTCOME, not the mechanism. It should answer three questions implicitly:
+  (1) What was actually agreed? (Use the dollar figure if known.)
+  (2) What's the real-world state? (Resolved, still disputed, paid, etc.)
+  (3) What's actually left? (In Mariana's vocabulary — "system needs to catch up", "payment hasn't gone out", "agent never responded" — NOT "advance status from disputed to revised, stamp finalized_at".)
+
+Lead with the dollar figure when one exists. Use Mariana's vocabulary, not engineering vocabulary. Avoid words like "advance", "stamp", "structured state", "lifecycle", "recoup line item", "JSON". The bottom line is what a senior colleague leaning over Mariana's shoulder would say in 10 seconds.
+
+Good bottom_line examples:
+  - "Artist gets $12,285. The deal is settled — Marcus and WME agreed on the +$720 concession. The only thing actually open is payment and getting the system to match."
+  - "TM signed off Sunday at $8,940 ('Looks good — wire when ready'). System is stuck on 'disputed' because of a stray Monday email from the assistant. Effectively closed; just needs cleanup."
+  - "Still actually disputed. The recoup line is open, the agent hasn't responded since 3/18, and no payment has gone out. Real work to do here."
+
+Bad bottom_line examples (too mechanism-focused):
+  - "Push the verbal resolution into the system so settlement.status reaches finalized."
+  - "Update marketing recoup from disputed to agreed and stamp finalized_at."
+
 SEVERITY GUIDE
 - 'contradiction': the structured field and the prose/timestamp evidence point in opposite directions. Surface this prominently.
 - 'warning': ambiguity or partial signal worth flagging but not definitive (e.g., a junior assistant signed off but the senior agent disagreed later).
@@ -38,18 +55,36 @@ CONFIDENCE GUIDE
 - 'medium': prose is suggestive but not conclusive (vague emoji, ambiguous "OK").
 - 'low': key prose fields are empty or genuinely conflicting beyond what the patterns above describe.
 
-RECOMMENDED NEXT ACTION
-One short, concrete sentence. Examples: "Update settlement status to signed and finalize the math.", "Confirm with WME that the $720 additional payment closed the marketing recoup before pushing the revision.", null (if no action is warranted). Do not propose actions outside Mariana's authority.
+RECOMMENDED ACTION (structured)
+You return a 'recommended_action' object with:
+- summary: one short sentence describing the overall intent (e.g., "Push the verbal resolution into the system so the dispute closes.")
+- steps: an array of discrete, bullet-sized actions Mariana could take. Each step has:
+  - description: one concrete action ("Update marketing recoup status from disputed to agreed")
+  - location: where the action lives. One of:
+    - 'greenroom' — would happen in the Greenroom UI (recoups section, lifecycle bar, signoff, worksheet)
+    - 'spreadsheet' — Mariana's external settlement spreadsheet
+    - 'email' — reply or follow-up to the agent/TM/management
+    - 'eng-ticket' — needs an engineering change (data fix, schema update) because no UI exists yet
+  - anchor: optional. Only when location is 'greenroom'. One of: '#lifecycle', '#recoups', '#signoff', '#worksheet'. Use the section the user would scroll to.
+
+IMPORTANT: Today the Greenroom settle page is read-only. There is NO UI to change recoup status, advance settlement state, stamp timestamps, or edit signoff/notes. For any action that updates settlement state, location should be 'eng-ticket' (with an optional anchor pointing the reader to the relevant section for context). Do not pretend buttons exist that don't. The 'greenroom' location is reserved for actions that genuinely live in the current UI (today, that mostly means 'click around to verify context before filing a ticket').
+
+Set recommended_action to null only when there's truly nothing to do (clean state, no action warranted). Otherwise return at least one step.
 
 Be concise. Mariana reads dozens of these and her time is the constraint.`;
 
 const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
+    bottom_line: {
+      type: "string",
+      description:
+        "1-2 sentences. The TL;DR Mariana sees first. Lead with the outcome (dollar figure if known, real-world status), then say what's actually left in plain language. NO engineering vocabulary ('advance status', 'stamp', 'lifecycle'). Think: what a senior colleague would say in 10 seconds.",
+    },
     plain_english_status: {
       type: "string",
       description:
-        "1-3 sentences in plain English describing what is actually happening with this settlement, written for Mariana. Mention the structured status only if it matches reality; otherwise lead with what the evidence shows.",
+        "2-4 sentences with more detail than bottom_line — the supporting context. Describe what is actually happening with this settlement. Mention the structured status only if it matches reality; otherwise lead with what the evidence shows.",
     },
     confidence: {
       type: "string",
@@ -87,13 +122,61 @@ const RESPONSE_SCHEMA = {
         additionalProperties: false,
       },
     },
-    recommended_next_action: {
-      type: ["string", "null"],
+    recommended_action: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            summary: {
+              type: "string",
+              description:
+                "One short sentence describing the overall intent of the next-step recommendation.",
+            },
+            steps: {
+              type: "array",
+              description:
+                "Discrete, bullet-sized actions. At least one if the parent object is non-null.",
+              items: {
+                type: "object",
+                properties: {
+                  description: {
+                    type: "string",
+                    description:
+                      "One concrete action, written imperatively (e.g., 'Update marketing recoup status from disputed to agreed').",
+                  },
+                  location: {
+                    type: "string",
+                    enum: ["greenroom", "spreadsheet", "email", "eng-ticket"],
+                    description:
+                      "Where this action would actually be taken. Use 'eng-ticket' for any settlement-state mutation since the Greenroom UI is read-only today.",
+                  },
+                  anchor: {
+                    anyOf: [
+                      {
+                        type: "string",
+                        enum: ["#lifecycle", "#recoups", "#signoff", "#worksheet"],
+                      },
+                      { type: "null" },
+                    ],
+                    description:
+                      "Optional anchor pointing to the relevant section of the settle page. Null when not applicable. Use only when the user would benefit from scrolling there.",
+                  },
+                },
+                required: ["description", "location", "anchor"],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ["summary", "steps"],
+          additionalProperties: false,
+        },
+        { type: "null" },
+      ],
       description:
-        "One concrete next step Mariana could take, or null if no action is warranted.",
+        "Structured next-step recommendation, or null if no action is warranted.",
     },
   },
-  required: ["plain_english_status", "confidence", "flags", "recommended_next_action"],
+  required: ["bottom_line", "plain_english_status", "confidence", "flags", "recommended_action"],
   additionalProperties: false,
 } as const;
 

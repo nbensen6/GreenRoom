@@ -1,12 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, AlertTriangle, Info, AlertOctagon, Loader2, ArrowRight } from "lucide-react";
+import {
+  Sparkles,
+  AlertTriangle,
+  Info,
+  AlertOctagon,
+  Loader2,
+  ArrowRight,
+  Clipboard,
+  ClipboardCheck,
+  Mail,
+  Wrench,
+  FileSpreadsheet,
+  ExternalLink,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 type Severity = "info" | "warning" | "contradiction";
 type Confidence = "high" | "medium" | "low";
+type Location = "greenroom" | "spreadsheet" | "email" | "eng-ticket";
 
 type Flag = {
   severity: Severity;
@@ -15,11 +29,23 @@ type Flag = {
   explanation: string;
 };
 
+type ActionStep = {
+  description: string;
+  location: Location;
+  anchor: string | null;
+};
+
+type RecommendedAction = {
+  summary: string;
+  steps: ActionStep[];
+} | null;
+
 type Analysis = {
+  bottom_line: string;
   plain_english_status: string;
   confidence: Confidence;
   flags: Flag[];
-  recommended_next_action: string | null;
+  recommended_action: RecommendedAction;
 };
 
 type ApiResponse = {
@@ -53,15 +79,120 @@ const CONFIDENCE_LABEL: Record<Confidence, string> = {
   low: "Low confidence",
 };
 
+const LOCATION_META: Record<
+  Location,
+  {
+    label: string;
+    groupHeading: string;
+    audience: string;
+    icon: typeof Info;
+    badge: string;
+  }
+> = {
+  greenroom: {
+    label: "in Greenroom",
+    groupHeading: "Inside Greenroom",
+    audience: "Mariana — click around to verify before any structural change",
+    icon: ExternalLink,
+    badge: "bg-brand-50 text-brand-800 ring-brand-200/70",
+  },
+  spreadsheet: {
+    label: "in spreadsheet",
+    groupHeading: "In your spreadsheet",
+    audience: "Mariana — your settlement spreadsheet",
+    icon: FileSpreadsheet,
+    badge: "bg-emerald-50 text-emerald-800 ring-emerald-200/70",
+  },
+  email: {
+    label: "via email",
+    groupHeading: "Email follow-up",
+    audience: "the agent / tour manager / management",
+    icon: Mail,
+    badge: "bg-sky-50 text-sky-800 ring-sky-200/70",
+  },
+  "eng-ticket": {
+    label: "eng ticket",
+    groupHeading: "For engineering",
+    audience: "the eng team — file as a ticket in Linear or post in #settlement-ops",
+    icon: Wrench,
+    badge: "bg-amber-50 text-amber-800 ring-amber-200/70",
+  },
+};
+
+const LOCATION_ORDER: Location[] = ["eng-ticket", "email", "spreadsheet", "greenroom"];
+
+function groupStepsByLocation(steps: ActionStep[]): Record<Location, ActionStep[]> {
+  const groups: Record<Location, ActionStep[]> = {
+    greenroom: [],
+    spreadsheet: [],
+    email: [],
+    "eng-ticket": [],
+  };
+  for (const step of steps) groups[step.location].push(step);
+  return groups;
+}
+
+function buildHandoffMarkdown(
+  showId: string,
+  analysis: Analysis,
+): string {
+  const lines: string[] = [];
+  lines.push(`# Settlement update — ${showId}`);
+  lines.push("");
+  lines.push(`**Bottom line:** ${analysis.bottom_line}`);
+  lines.push("");
+  lines.push(`**Detail:** ${analysis.plain_english_status}`);
+  lines.push("");
+
+  if (analysis.flags.length > 0) {
+    lines.push("## Findings");
+    for (const f of analysis.flags) {
+      lines.push(`- **[${f.severity.toUpperCase()}]** ${f.type} — ${f.explanation}`);
+      lines.push(`  > ${f.evidence}`);
+    }
+    lines.push("");
+  }
+
+  if (analysis.recommended_action) {
+    lines.push(`**Plan:** ${analysis.recommended_action.summary}`);
+    lines.push("");
+
+    const groups = groupStepsByLocation(analysis.recommended_action.steps);
+    for (const loc of LOCATION_ORDER) {
+      const stepsForLoc = groups[loc];
+      if (stepsForLoc.length === 0) continue;
+      const meta = LOCATION_META[loc];
+      lines.push(`## ${meta.groupHeading}`);
+      lines.push(`_Audience: ${meta.audience}_`);
+      lines.push("");
+      for (const step of stepsForLoc) {
+        lines.push(`- [ ] ${step.description}`);
+      }
+      lines.push("");
+    }
+  }
+
+  lines.push(
+    `---`,
+  );
+  lines.push(
+    `_Source: /shows/${showId}/settle · The Greenroom settle page is read-only today, so any settlement-state mutation needs eng support to push through._`,
+  );
+
+  return lines.join("\n");
+}
+
 export function AISettlePanel({ showId }: { showId: string }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ApiResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   async function runAnalysis() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setCopied(false);
     try {
       const res = await fetch(`/api/settle/${showId}/analyze`, { method: "POST" });
       const data = await res.json();
@@ -73,6 +204,19 @@ export function AISettlePanel({ showId }: { showId: string }) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function copyHandoff() {
+    if (!result) return;
+    const md = buildHandoffMarkdown(showId, result.analysis);
+    try {
+      await navigator.clipboard.writeText(md);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Fallback for browsers that block clipboard API
+      setError("Couldn't access clipboard — copy manually from the handoff preview below.");
     }
   }
 
@@ -93,13 +237,24 @@ export function AISettlePanel({ showId }: { showId: string }) {
           </CardDescription>
         </div>
         {!analysis && !loading && (
-          <Button variant="brand" size="sm" onClick={runAnalysis}>
+          <Button
+            variant="brand"
+            size="sm"
+            onClick={runAnalysis}
+            className="shrink-0 whitespace-nowrap"
+          >
             <Sparkles className="h-3.5 w-3.5" />
             Summarize settlement
           </Button>
         )}
         {analysis && (
-          <Button variant="secondary" size="sm" onClick={runAnalysis} disabled={loading}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={runAnalysis}
+            disabled={loading}
+            className="shrink-0 whitespace-nowrap"
+          >
             Re-run
           </Button>
         )}
@@ -127,18 +282,27 @@ export function AISettlePanel({ showId }: { showId: string }) {
 
         {analysis && (
           <>
-            {/* Plain-English status */}
-            <div>
+            {/* Bottom line — the TL;DR */}
+            <div className="rounded-lg bg-ink-900/[0.03] ring-1 ring-ink-200/60 p-4">
               <div className="eyebrow text-[10px] text-ink-500 mb-2">
-                What&apos;s actually happening
+                Bottom line
               </div>
-              <div className="text-[13.5px] text-ink-900 leading-relaxed">
-                {analysis.plain_english_status}
-              </div>
-              <div className="text-[11px] text-ink-400 mt-2 font-mono">
-                {CONFIDENCE_LABEL[analysis.confidence]}
+              <div className="text-[15px] text-ink-900 leading-relaxed font-medium" style={{ letterSpacing: "-0.005em" }}>
+                {analysis.bottom_line}
               </div>
             </div>
+
+            {/* Supporting detail (collapsible-feeling, lower visual weight) */}
+            <details className="group" open>
+              <summary className="cursor-pointer text-[10px] eyebrow text-ink-500 hover:text-ink-700 inline-flex items-center gap-1 select-none">
+                <span className="group-open:rotate-90 transition-transform inline-block">›</span>
+                More detail
+                <span className="text-ink-300 font-mono ml-1.5 normal-case tracking-normal">{CONFIDENCE_LABEL[analysis.confidence]}</span>
+              </summary>
+              <div className="text-[13px] text-ink-700 leading-relaxed mt-2 pl-4">
+                {analysis.plain_english_status}
+              </div>
+            </details>
 
             {/* Flags */}
             {analysis.flags.length > 0 && (
@@ -186,18 +350,98 @@ export function AISettlePanel({ showId }: { showId: string }) {
               </div>
             )}
 
-            {/* Recommended action */}
-            {analysis.recommended_next_action && (
-              <div className="rounded-lg bg-brand-50/40 ring-1 ring-brand-200/50 p-3.5 flex items-start gap-2.5">
-                <ArrowRight className="h-3.5 w-3.5 text-brand-700 mt-0.5 shrink-0" />
-                <div>
-                  <div className="eyebrow text-[10px] text-brand-800 mb-1">
-                    Suggested next step
+            {/* Recommended action — grouped by audience */}
+            {analysis.recommended_action && (
+              <div className="rounded-lg bg-brand-50/40 ring-1 ring-brand-200/50 p-4">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <ArrowRight className="h-3.5 w-3.5 text-brand-700 mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="eyebrow text-[10px] text-brand-800 mb-1">
+                        Plan to close this out
+                      </div>
+                      <div className="text-[12.5px] text-ink-800 leading-relaxed">
+                        {analysis.recommended_action.summary}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[12.5px] text-ink-800 leading-relaxed">
-                    {analysis.recommended_next_action}
-                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={copyHandoff}
+                    className="shrink-0 whitespace-nowrap"
+                    title="Copy a markdown checklist grouped by audience (eng / email / spreadsheet)."
+                  >
+                    {copied ? (
+                      <>
+                        <ClipboardCheck className="h-3.5 w-3.5" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Clipboard className="h-3.5 w-3.5" />
+                        Copy checklist
+                      </>
+                    )}
+                  </Button>
                 </div>
+
+                <div className="space-y-3.5">
+                  {LOCATION_ORDER.map((loc) => {
+                    const stepsForLoc =
+                      analysis.recommended_action!.steps.filter(
+                        (s) => s.location === loc,
+                      );
+                    if (stepsForLoc.length === 0) return null;
+                    const meta = LOCATION_META[loc];
+                    const HeadIcon = meta.icon;
+                    return (
+                      <div key={loc}>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-medium uppercase tracking-wider ring-1 ring-inset ${meta.badge}`}
+                          >
+                            <HeadIcon className="h-2.5 w-2.5" />
+                            {meta.groupHeading}
+                          </span>
+                          <span className="text-[10.5px] text-ink-400 leading-tight">
+                            {meta.audience}
+                          </span>
+                        </div>
+                        <ul className="space-y-1.5 pl-3 border-l-2 border-brand-200/50">
+                          {stepsForLoc.map((step, i) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <span className="mt-1.5 h-1 w-1 rounded-full bg-ink-400 shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-[12.5px] text-ink-800 leading-relaxed">
+                                  {step.description}
+                                </div>
+                                {step.anchor && (
+                                  <a
+                                    href={step.anchor}
+                                    className="text-[10.5px] text-brand-700 hover:text-brand-800 hover:underline inline-flex items-center gap-0.5 font-medium mt-0.5"
+                                  >
+                                    Jump to section
+                                    <ArrowRight className="h-2.5 w-2.5" />
+                                  </a>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {analysis.recommended_action.steps.some(
+                  (s) => s.location === "eng-ticket",
+                ) && (
+                  <div className="text-[10.5px] text-ink-400 mt-4 pt-3 border-t border-brand-200/40 leading-relaxed">
+                    <Wrench className="h-2.5 w-2.5 inline mr-1" />
+                    The Greenroom settle page is read-only today — settlement-state mutations need eng support to push through. <span className="font-medium text-ink-600">Copy checklist</span> formats this with section breaks for each audience.
+                  </div>
+                )}
               </div>
             )}
 

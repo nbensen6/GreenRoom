@@ -124,7 +124,9 @@ export default async function SettlePage({
       )}
 
       {settlement && (
-        <LifecycleBar settlement={settlement} disputedRecoups={disputedRecoups.length} />
+        <div id="lifecycle" className="scroll-mt-12">
+          <LifecycleBar settlement={settlement} disputedRecoups={disputedRecoups.length} />
+        </div>
       )}
 
       {settlement && (
@@ -134,25 +136,33 @@ export default async function SettlePage({
       )}
 
       <div className="space-y-6 mt-6">
-        {!calc.supported ? (
-          <UnsupportedDeal
-            dealType={calc.dealType}
-            deal={deal}
-            existingSettlement={settlement}
-            grossSoFar={grossSoFar}
-            totalFees={totalFees}
-            totalExpenses={totalExpenses}
-            ticketCount={ticketSales.reduce((s, t) => s + (t.qty ?? 0), 0)}
-            expenseRowCount={expenses.length}
-          />
-        ) : (
-          <SupportedSettlement calc={calc} existingSettlement={settlement} />
+        <div id="worksheet" className="scroll-mt-12">
+          {!calc.supported ? (
+            <UnsupportedDeal
+              dealType={calc.dealType}
+              deal={deal}
+              existingSettlement={settlement}
+              grossSoFar={grossSoFar}
+              totalFees={totalFees}
+              totalExpenses={totalExpenses}
+              ticketCount={ticketSales.reduce((s, t) => s + (t.qty ?? 0), 0)}
+              expenseRowCount={expenses.length}
+            />
+          ) : (
+            <SupportedSettlement calc={calc} existingSettlement={settlement} />
+          )}
+        </div>
+
+        {recoups.length > 0 && (
+          <div id="recoups" className="scroll-mt-12">
+            <RecoupsSection recoups={recoups} />
+          </div>
         )}
 
-        {recoups.length > 0 && <RecoupsSection recoups={recoups} />}
-
         {settlement && (settlement.signoffText || settlement.notes) && (
-          <SignoffSection settlement={settlement} />
+          <div id="signoff" className="scroll-mt-12">
+            <SignoffSection settlement={settlement} />
+          </div>
         )}
       </div>
 
