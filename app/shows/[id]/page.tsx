@@ -6,6 +6,7 @@ import {
   AlertCircle,
   Clock,
   TrendingUp,
+  Sparkles,
 } from "lucide-react";
 import { getShowById } from "@/lib/queries";
 import {
@@ -164,7 +165,18 @@ export default async function ShowDetailPage({
                   thread with the agent.
                 </CardDescription>
               </div>
-              {deal && <DealTypeBadge type={deal.dealType} />}
+              <div className="flex items-center gap-2 shrink-0">
+                {deal && <DealTypeBadge type={deal.dealType} />}
+                {deal?.dealNotesFreetext && (
+                  <Link
+                    href={`/deals/analyze?showId=${show.id}`}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11.5px] font-medium ring-1 ring-inset bg-white text-ink-700 ring-ink-200/80 hover:bg-ink-50 transition-colors whitespace-nowrap"
+                  >
+                    <Sparkles className="h-3 w-3 text-brand-700" />
+                    Analyze with AI
+                  </Link>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-5">
               {deal ? (
