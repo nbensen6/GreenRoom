@@ -687,7 +687,7 @@ export default async function ShowDetailPage({
                       total
                     </PlainBadge>
                   }
-                  defaultOpen
+                  defaultOpen={false}
                 >
                   <RecoupsBody recoups={recoups} />
                 </CollapsibleCard>
@@ -699,7 +699,7 @@ export default async function ShowDetailPage({
                   id="signoff"
                   title="Sign-off & notes"
                   description="Captured signoff blurb plus Mariana's free-text notes."
-                  defaultOpen
+                  defaultOpen={false}
                 >
                   <SignoffBody settlement={settlement} />
                 </CollapsibleCard>
