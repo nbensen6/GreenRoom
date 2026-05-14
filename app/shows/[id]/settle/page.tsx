@@ -32,6 +32,8 @@ import { Logomark } from "@/components/brand/logo";
 import { AISettlePanel } from "./ai-panel";
 import { parseReviewState } from "@/lib/settlement-review";
 import { ReviewStatusCard, SendForReviewButton } from "./review-status";
+import { parseEmails } from "@/lib/settlement-emails";
+import { EmailSection } from "./email-section";
 
 const RECOUP_LABELS: Record<Recoup["category"], string> = {
   marketing: "Marketing",
@@ -81,6 +83,7 @@ export default async function SettlePage({
   const isDisputed = settlement?.status === "disputed" || settlement?.status === "revised" || !!settlement?.disputedAt;
   const disputedRecoupValue = disputedRecoups.reduce((s, r) => s + r.amount, 0);
   const review = settlement ? parseReviewState(settlement.reviewJson) : null;
+  const emails = settlement ? parseEmails(settlement.emailsJson) : [];
 
   return (
     <div className={`px-12 py-10 max-w-7xl ${isDisputed ? "bg-gradient-to-b from-rose-50/30 via-canvas to-canvas" : ""}`}>
@@ -145,6 +148,20 @@ export default async function SettlePage({
           ) : (
             <SendForReviewButton showId={show.id} />
           )}
+        </div>
+      )}
+
+      {settlement && (
+        <div className="mt-6">
+          <EmailSection
+            showId={show.id}
+            emails={emails}
+            defaultRecipientName={
+              data.agent
+                ? `${data.agent.name}${data.agency ? ` (${data.agency.name})` : ""}`
+                : ""
+            }
+          />
         </div>
       )}
 

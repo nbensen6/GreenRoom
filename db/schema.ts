@@ -279,6 +279,9 @@ export const settlements = sqliteTable("settlements", {
   // Pre-settlement line-item review captured from the artist team.
   // Schema: { submitted_at, submitted_by, line_items: [{key,label,amount,status,contest_reason?}] }
   reviewJson: text("review_json"),
+  // In-app emails sent to the agent / TM / management about this settlement.
+  // Schema: [{ id, recipient_name, recipient_email?, subject, body, intent, drafted_by_ai, sent_at }]
+  emailsJson: text("emails_json"),
 
   signoffText: text("signoff_text"),
   notes: text("notes"),
