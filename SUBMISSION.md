@@ -2,6 +2,7 @@
 
 **Submission for:** Applied AI PM, Clipboard Health
 **Author:** Nick Bensen
+**Live demo:** [greenroom-case-study.fly.dev](https://greenroom-case-study.fly.dev) *(idle machines auto-sleep; first request may take ~2s to wake)*
 **Repo:** [github.com/nbensen6/GreenRoom](https://github.com/nbensen6/GreenRoom)
 **Stack:** Next.js 16 · React 19 · TypeScript · Drizzle ORM (SQLite) · Anthropic SDK (Claude Opus 4.7)
 
@@ -102,15 +103,19 @@ Two features I scoped but didn't build, each with a clear path forward:
 
 ## Running it
 
+**Easiest: visit the live demo** → [greenroom-case-study.fly.dev/shows](https://greenroom-case-study.fly.dev/shows). All AI features are wired to a working Anthropic key; nothing to set up. Try Coastal Spell for the canonical Phase 1/2 story, any `vs` deal for Phase 4a math, or any show for Phase 6's unified workflow.
+
+**Or clone and run locally:**
+
 ```
 git clone https://github.com/nbensen6/GreenRoom
 cd GreenRoom
 npm install
-# add ANTHROPIC_API_KEY to .env.local
+echo "ANTHROPIC_API_KEY=sk-ant-..." > .env.local
 ./dev.bat   # or: npm run dev
 ```
 
-Open `http://localhost:3000/shows`, find a show — try Coastal Spell for the canonical Phase 1/2 story, or any `vs` deal for Phase 4a math, or any show for Phase 6's unified workflow.
+Then open `http://localhost:3000/shows`.
 
 ---
 
