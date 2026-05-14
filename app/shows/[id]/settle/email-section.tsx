@@ -65,23 +65,43 @@ export function EmailSection({
   const [draftedByAi, setDraftedByAi] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Deep-link: ?intent=<value> opens the composer with that intent pre-selected.
+  // Open the composer with a specific intent — triggered by chips elsewhere
+  // on the page (e.g. "Email to confirm" on Deal terms).
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const sp = new URLSearchParams(window.location.search);
-    const requested = sp.get("intent");
-    if (requested && VALID_INTENTS.has(requested as EmailIntent)) {
-      setIntent(requested as EmailIntent);
+    function openWithIntent(intent: string) {
+      if (!VALID_INTENTS.has(intent as EmailIntent)) return;
+      setIntent(intent as EmailIntent);
       setComposerOpen(true);
-      sp.delete("intent");
-      const query = sp.toString();
-      router.replace(query ? `?${query}#email` : `#email`, { scroll: false });
       requestAnimationFrame(() => {
         document
           .getElementById("email")
           ?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     }
+
+    // 1) Event-based (same-page chip clicks) — fires after this component
+    //    is mounted, so we listen rather than checking on mount.
+    function handler(e: Event) {
+      const ce = e as CustomEvent<{ intent?: string }>;
+      if (ce.detail?.intent) openWithIntent(ce.detail.intent);
+    }
+    window.addEventListener("greenroom:open-email-composer", handler);
+
+    // 2) URL-based (direct deep-link from elsewhere or a refresh) — runs once.
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const requested = sp.get("intent");
+      if (requested) {
+        openWithIntent(requested);
+        sp.delete("intent");
+        const query = sp.toString();
+        router.replace(query ? `?${query}#email` : `#email`, { scroll: false });
+      }
+    }
+
+    return () => {
+      window.removeEventListener("greenroom:open-email-composer", handler);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

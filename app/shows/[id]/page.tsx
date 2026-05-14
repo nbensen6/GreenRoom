@@ -8,7 +8,6 @@ import {
   TrendingUp,
   Sparkles,
   AlertTriangle,
-  Mail,
   Send,
   CheckCircle2,
   AlertOctagon,
@@ -27,6 +26,7 @@ import {
 } from "@/lib/format";
 import type { Bonus } from "@/db/schema";
 import { ShowPipeline } from "./show-pipeline";
+import { EmailToConfirmChip } from "./email-confirm-chip";
 import { parseReviewState } from "@/lib/settlement-review";
 import { parseEmails } from "@/lib/settlement-emails";
 import { EmailSection } from "./settle/email-section";
@@ -248,14 +248,7 @@ export default async function ShowDetailPage({
                         Analyze with AI
                       </Link>
                     )}
-                    <Link
-                      href={`?intent=confirm_deal_terms#email`}
-                      scroll={false}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11.5px] font-medium ring-1 ring-inset bg-white text-ink-700 ring-ink-200/80 hover:bg-ink-50 transition-colors whitespace-nowrap"
-                    >
-                      <Mail className="h-3 w-3 text-brand-700" />
-                      Email to confirm
-                    </Link>
+                    <EmailToConfirmChip />
                   </div>
                 ) : null
               }
