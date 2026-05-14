@@ -1,26 +1,28 @@
 /**
  * Deal calculation logic for the in-app settlement tool.
  *
- * Handles four deal types end-to-end:
+ * Handles five deal types end-to-end:
  *
  *   1. flat                 — $X guaranteed, optional sellout bonus
  *   2. percentage_of_gross  — X% of gross, no expense deductions
  *   3. percentage_of_net    — X% of (gross − fees − expenses)
  *   4. vs                   — max(guarantee, X% × basis), basis = gross or net
+ *   5. door                 — gross − min(actual_expenses, expense_cap)
  *
- * All four read `bonusesJson` and apply bonuses where they can — but only
+ * All five read `bonusesJson` and apply bonuses where they can — but only
  * the structured ones. Bonuses that exist only in `dealNotesFreetext` are
  * invisible to this engine.
  *
- * Still NOT handled:
+ * For deal shapes the engine can't structure (tier ratchets, custom co-bills,
+ * negotiated mid-show changes), the settlement carries a
+ * `worksheetAdjustmentsJson` field for manual line-item overrides. That's
+ * the escape hatch — math here, override there, total combines both.
  *
- *   - door deals (artist takes door, venue keeps bar — needs bar-revenue field)
+ * Still NOT handled by structured math:
+ *
  *   - tier ratchets (% steps up at ticket thresholds — needs threshold table)
  *   - recoups (those flow separately through the settlement record)
  *   - comps that count toward gross
- *
- * For unsupported deals, the tool returns { supported: false } and the UI
- * shows the "this deal type isn't yet supported" empty state.
  */
 
 import type { Deal, Expense, TicketSale, Bonus } from "@/db/schema";
@@ -278,6 +280,72 @@ export function calculateSettlement(input: CalcInput): SettlementCalculation {
       finalFormula: bonusResult.applied.length
         ? `max(${deal.guaranteeAmount}, ${basisLabel} × ${deal.percentage}) + bonuses = ${(corePayout + bonusResult.totalApplied).toFixed(2)}`
         : `max(${deal.guaranteeAmount}, ${basisLabel} × ${deal.percentage}) = ${corePayout.toFixed(2)}`,
+      bonusesApplied: bonusResult.applied,
+      bonusesNotTriggered: bonusResult.notTriggered,
+    };
+  }
+
+  // ---------- door deal ----------
+  if (deal.dealType === "door") {
+    const cappedExpenses =
+      deal.expenseCap != null
+        ? Math.min(totalExpenses, deal.expenseCap)
+        : totalExpenses;
+    const expensesOverCap = Math.max(0, totalExpenses - cappedExpenses);
+    const payout = Math.max(0, grossBoxOffice - cappedExpenses);
+
+    const bonusResult = applyBonuses(parseBonuses(deal), {
+      gross: grossBoxOffice,
+      tickets,
+      capacity: venueCapacity,
+    });
+
+    const expenseSteps: { label: string; value: number; note?: string }[] =
+      deal.expenseCap != null && expensesOverCap > 0
+        ? [
+            {
+              label: `Capped expenses (cap ${formatDollars(deal.expenseCap)})`,
+              value: cappedExpenses,
+              note: `Actual expenses ${formatDollars(totalExpenses)}; venue absorbs ${formatDollars(expensesOverCap)} over the cap.`,
+            },
+          ]
+        : [
+            {
+              label: "Expenses (deducted from door)",
+              value: totalExpenses,
+              note: deal.expenseCap != null
+                ? `Under the ${formatDollars(deal.expenseCap)} cap.`
+                : "No expense cap on this deal.",
+            },
+          ];
+
+    return {
+      supported: true,
+      grossBoxOffice,
+      netBoxOffice,
+      totalExpenses,
+      totalToArtist: payout + bonusResult.totalApplied,
+      steps: [
+        {
+          label: "Door (gross ticket revenue)",
+          value: grossBoxOffice,
+          note: "Artist takes the door; venue keeps bar and ancillary.",
+        },
+        ...expenseSteps,
+        {
+          label: "Door payout",
+          value: payout,
+          note: "Gross minus expenses the artist eats (capped if applicable).",
+        },
+        ...bonusResult.applied.map((b) => ({
+          label: b.label,
+          value: b.amount,
+          note: b.reason,
+        })),
+      ],
+      finalFormula: bonusResult.applied.length
+        ? `gross − min(expenses, cap) + bonuses = ${(payout + bonusResult.totalApplied).toFixed(2)}`
+        : `gross − min(expenses, cap) = ${payout.toFixed(2)}`,
       bonusesApplied: bonusResult.applied,
       bonusesNotTriggered: bonusResult.notTriggered,
     };

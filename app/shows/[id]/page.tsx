@@ -9,6 +9,9 @@ import {
   Sparkles,
   AlertTriangle,
   Mail,
+  Send,
+  CheckCircle2,
+  AlertOctagon,
 } from "lucide-react";
 import { getShowById } from "@/lib/queries";
 import { Field } from "@/components/ui/card";
@@ -25,10 +28,13 @@ import {
 import type { Bonus } from "@/db/schema";
 import { ShowPipeline } from "./show-pipeline";
 import { parseReviewState } from "@/lib/settlement-review";
-import { ReviewStatusCard, SendForReviewButton } from "./settle/review-status";
 import { parseEmails } from "@/lib/settlement-emails";
 import { EmailSection } from "./settle/email-section";
 import { SettlementWorksheetCard } from "./settle/worksheet-card";
+import {
+  parseAdjustments,
+  sumAdjustments,
+} from "@/lib/settlement-adjustments";
 import {
   WorksheetHero,
   WorksheetBody,
@@ -105,6 +111,10 @@ export default async function ShowDetailPage({
     !!settlement?.disputedAt;
   const review = settlement ? parseReviewState(settlement.reviewJson) : null;
   const emails = settlement ? parseEmails(settlement.emailsJson) : [];
+  const adjustments = settlement
+    ? parseAdjustments(settlement.worksheetAdjustmentsJson)
+    : [];
+  const adjustmentsTotal = sumAdjustments(adjustments);
 
   const showSettlementSection = !!deal;
   const defaultRecipientName = agent
@@ -602,12 +612,13 @@ export default async function ShowDetailPage({
                 <WorksheetHero
                   calc={calc}
                   existingSettlement={settlement ?? null}
+                  adjustmentsTotal={adjustmentsTotal}
                 />
               </div>
             )}
 
             <div className="space-y-5">
-              {/* a. Worksheet (with AI chip) */}
+              {/* a. Worksheet (with AI chip + Review chip) */}
               {calc && (
                 <SettlementWorksheetCard
                   showId={show.id}
@@ -623,6 +634,15 @@ export default async function ShowDetailPage({
                   }
                   accent={calc.supported ? "brand" : undefined}
                   canAnalyze={!!settlement}
+                  reviewChip={
+                    settlement ? (
+                      <ReviewChip showId={show.id} review={review} />
+                    ) : undefined
+                  }
+                  adjustments={settlement ? adjustments : undefined}
+                  baseTotal={
+                    settlement && calc.supported ? calc.totalToArtist : undefined
+                  }
                   defaultOpen
                 >
                   {calc.supported ? (
@@ -673,18 +693,7 @@ export default async function ShowDetailPage({
                 </CollapsibleCard>
               )}
 
-              {/* d. Pre-settlement review */}
-              {settlement && (
-                <div id="review" className="scroll-mt-12">
-                  {review ? (
-                    <ReviewStatusCard review={review} showId={show.id} />
-                  ) : (
-                    <SendForReviewButton showId={show.id} />
-                  )}
-                </div>
-              )}
-
-              {/* e. Sign-off & notes */}
+              {/* d. Sign-off & notes */}
               {settlement && (settlement.signoffText || settlement.notes) && (
                 <CollapsibleCard
                   id="signoff"
@@ -735,6 +744,52 @@ function BonusBadge({ type }: { type: Bonus["type"] }) {
     <span className="inline-flex shrink-0 items-center px-1.5 py-px rounded text-[9px] font-mono uppercase tracking-wider bg-white ring-1 ring-brand-200/50 text-brand-800">
       {labels[type]}
     </span>
+  );
+}
+
+function ReviewChip({
+  showId,
+  review,
+}: {
+  showId: string;
+  review: ReturnType<typeof parseReviewState>;
+}) {
+  if (!review) {
+    return (
+      <Link
+        href={`/shows/${showId}/settle/review`}
+        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11.5px] font-medium ring-1 ring-inset bg-white text-ink-700 ring-ink-200/80 hover:bg-ink-50 transition-colors whitespace-nowrap"
+      >
+        <Send className="h-3 w-3 text-brand-700" />
+        Send for review
+      </Link>
+    );
+  }
+  const accepted = review.line_items.filter(
+    (l) => l.status === "accepted",
+  ).length;
+  const contested = review.line_items.filter(
+    (l) => l.status === "contested",
+  ).length;
+  const hasContested = contested > 0;
+
+  return (
+    <Link
+      href={`/shows/${showId}/settle/review`}
+      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11.5px] font-medium ring-1 ring-inset transition-colors whitespace-nowrap ${
+        hasContested
+          ? "bg-rose-50/60 text-rose-800 ring-rose-200/70 hover:bg-rose-50"
+          : "bg-brand-50/60 text-brand-800 ring-brand-200/70 hover:bg-brand-50"
+      }`}
+    >
+      {hasContested ? (
+        <AlertOctagon className="h-3 w-3 text-rose-700" />
+      ) : (
+        <CheckCircle2 className="h-3 w-3 text-brand-700" />
+      )}
+      Review: {accepted} accepted
+      {hasContested && `, ${contested} contested`}
+    </Link>
   );
 }
 

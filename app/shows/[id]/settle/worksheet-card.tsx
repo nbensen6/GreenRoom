@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { CollapsibleCard } from "@/components/ui/collapsible-card";
 import { Button } from "@/components/ui/button";
+import { WorksheetAdjustments } from "./worksheet-adjustments";
+import type { WorksheetAdjustment } from "@/lib/settlement-adjustments";
 
 type Severity = "info" | "warning" | "contradiction";
 type Confidence = "high" | "medium" | "low";
@@ -172,6 +174,9 @@ export function SettlementWorksheetCard({
   accent,
   defaultOpen = true,
   canAnalyze,
+  reviewChip,
+  adjustments,
+  baseTotal,
   children,
 }: {
   showId: string;
@@ -181,6 +186,12 @@ export function SettlementWorksheetCard({
   defaultOpen?: boolean;
   /** If false, hides the Analyze chip (e.g., when there's no settlement yet). */
   canAnalyze: boolean;
+  /** Optional second chip rendered next to "Analyze with AI" (e.g. Send-for-review). */
+  reviewChip?: React.ReactNode;
+  /** Manual worksheet adjustments — rendered as a collapsible at the bottom. */
+  adjustments?: WorksheetAdjustment[];
+  /** Pre-adjustment payout used by the adjustments section to show the adjusted total. */
+  baseTotal?: number;
   children: React.ReactNode;
 }) {
   const [loading, setLoading] = useState(false);
@@ -223,7 +234,7 @@ export function SettlementWorksheetCard({
   const hasContradictions =
     analysis?.flags.some((f) => f.severity === "contradiction") ?? false;
 
-  const chip = canAnalyze && (
+  const analyzeChip = canAnalyze && (
     <button
       type="button"
       onClick={runAnalysis}
@@ -244,16 +255,32 @@ export function SettlementWorksheetCard({
     </button>
   );
 
+  const headerChips =
+    analyzeChip || reviewChip ? (
+      <div className="flex items-center gap-1.5">
+        {analyzeChip}
+        {reviewChip}
+      </div>
+    ) : undefined;
+
   return (
     <CollapsibleCard
       id="worksheet"
       title={title}
       description={description}
       accent={hasContradictions ? "rose" : accent}
-      headerAction={chip}
+      headerAction={headerChips}
       defaultOpen={defaultOpen}
     >
       {children}
+
+      {adjustments && baseTotal != null && (
+        <WorksheetAdjustments
+          showId={showId}
+          baseTotal={baseTotal}
+          initialAdjustments={adjustments}
+        />
+      )}
 
       {error && (
         <div className="mt-5 rounded-lg bg-rose-50/60 ring-1 ring-rose-200/60 p-3 text-[12.5px] text-rose-900">

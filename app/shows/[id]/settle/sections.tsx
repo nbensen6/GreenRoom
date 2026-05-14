@@ -196,12 +196,17 @@ export function LifecycleBody({
 export function WorksheetHero({
   calc,
   existingSettlement,
+  adjustmentsTotal = 0,
 }: {
   calc: Extract<ReturnType<typeof calculateSettlement>, { supported: true }>;
   existingSettlement: NonNullable<
     Awaited<ReturnType<typeof getShowById>>
   >["settlement"];
+  /** Sum of worksheet adjustments — added on top of the structured calc. */
+  adjustmentsTotal?: number;
 }) {
+  const finalTotal = calc.totalToArtist + adjustmentsTotal;
+  const hasAdjustments = adjustmentsTotal !== 0;
   return (
     <div className="text-center py-8">
       <div className="eyebrow text-[10px] text-ink-400 mb-3">
@@ -211,8 +216,22 @@ export function WorksheetHero({
         className="text-[72px] font-mono tabular font-bold text-ink-900 leading-none"
         style={{ letterSpacing: "-0.03em" }}
       >
-        {formatMoney(calc.totalToArtist)}
+        {formatMoney(finalTotal)}
       </div>
+      {hasAdjustments && (
+        <div className="text-[11.5px] text-ink-500 mt-2">
+          {formatMoney(calc.totalToArtist)} from structured math{" "}
+          <span
+            className={
+              adjustmentsTotal > 0 ? "text-brand-700" : "text-rose-700"
+            }
+          >
+            {adjustmentsTotal > 0 ? "+" : ""}
+            {formatMoney(adjustmentsTotal)}
+          </span>{" "}
+          manual adjustments
+        </div>
+      )}
       {existingSettlement && (
         <div className="mt-3">
           {existingSettlement.status === "paid" ? (
@@ -226,7 +245,7 @@ export function WorksheetHero({
         </div>
       )}
       {existingSettlement?.totalToArtist != null &&
-        existingSettlement.totalToArtist !== calc.totalToArtist && (
+        existingSettlement.totalToArtist !== finalTotal && (
           <div className="text-[12px] text-ink-400 mt-2">
             Originally settled at{" "}
             <span className="font-mono tabular text-ink-600">

@@ -282,6 +282,10 @@ export const settlements = sqliteTable("settlements", {
   // In-app emails sent to the agent / TM / management about this settlement.
   // Schema: [{ id, recipient_name, recipient_email?, subject, body, intent, drafted_by_ai, sent_at }]
   emailsJson: text("emails_json"),
+  // Manual worksheet adjustments — the escape hatch for deal shapes the math
+  // engine can't structure (custom co-bills, mid-show negotiated changes, etc).
+  // Schema: [{ id, label, amount, note?, added_at }]
+  worksheetAdjustmentsJson: text("worksheet_adjustments_json"),
 
   signoffText: text("signoff_text"),
   notes: text("notes"),
