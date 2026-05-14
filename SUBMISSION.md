@@ -111,7 +111,7 @@ Two features I scoped but didn't build, each with a clear path forward:
 git clone https://github.com/nbensen6/GreenRoom
 cd GreenRoom
 npm install
-echo "ANTHROPIC_API_KEY=sk-ant-..." > .env.local
+# add ANTHROPIC_API_KEY to .env.local
 ./dev.bat   # or: npm run dev
 ```
 
