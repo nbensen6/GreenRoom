@@ -1,4 +1,5 @@
 export type EmailIntent =
+  | "confirm_deal_terms"
   | "send_for_review"
   | "follow_up_payment"
   | "confirm_recoup"
@@ -6,6 +7,7 @@ export type EmailIntent =
   | "custom";
 
 export const EMAIL_INTENT_LABELS: Record<EmailIntent, string> = {
+  confirm_deal_terms: "Confirm deal terms (pre-show)",
   send_for_review: "Send settlement for review",
   follow_up_payment: "Follow up on payment",
   confirm_recoup: "Confirm a recoup interpretation",
@@ -14,6 +16,8 @@ export const EMAIL_INTENT_LABELS: Record<EmailIntent, string> = {
 };
 
 export const EMAIL_INTENT_HINT: Record<EmailIntent, string> = {
+  confirm_deal_terms:
+    "Pre-show: Mariana wants the agent to confirm in writing that the locked-in deal terms match the original offer. Creates a paper trail before the show.",
   send_for_review:
     "Mariana wants the artist team to review the settlement line items.",
   follow_up_payment:

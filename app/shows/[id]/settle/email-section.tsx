@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Mail,
@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronUp,
   Check,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,8 +26,12 @@ import {
   type EmailIntent,
   type EmailRecord,
 } from "@/lib/settlement-emails";
+import type { Deal, Bonus } from "@/db/schema";
+import { parseBonuses } from "@/lib/dealMath";
+import { formatMoney } from "@/lib/format";
 
 const INTENT_OPTIONS: EmailIntent[] = [
+  "confirm_deal_terms",
   "send_for_review",
   "follow_up_payment",
   "confirm_recoup",
@@ -34,14 +39,18 @@ const INTENT_OPTIONS: EmailIntent[] = [
   "custom",
 ];
 
+const VALID_INTENTS = new Set<EmailIntent>(INTENT_OPTIONS);
+
 export function EmailSection({
   showId,
   emails,
   defaultRecipientName,
+  deal,
 }: {
   showId: string;
   emails: EmailRecord[];
   defaultRecipientName: string;
+  deal: Deal | null;
 }) {
   const router = useRouter();
   const [composerOpen, setComposerOpen] = useState(false);
@@ -55,6 +64,28 @@ export function EmailSection({
   const [error, setError] = useState<string | null>(null);
   const [draftedByAi, setDraftedByAi] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Deep-link: ?intent=<value> opens the composer with that intent pre-selected.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const requested = sp.get("intent");
+    if (requested && VALID_INTENTS.has(requested as EmailIntent)) {
+      setIntent(requested as EmailIntent);
+      setComposerOpen(true);
+      sp.delete("intent");
+      const query = sp.toString();
+      router.replace(query ? `?${query}#email` : `#email`, { scroll: false });
+      requestAnimationFrame(() => {
+        document
+          .getElementById("email")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const bonuses = deal ? parseBonuses(deal) : [];
 
   function resetComposer() {
     setIntent("send_for_review");
@@ -202,6 +233,10 @@ export function EmailSection({
                   rows={2}
                 />
               </div>
+            )}
+
+            {intent === "confirm_deal_terms" && deal && (
+              <DealTermsPreview deal={deal} bonuses={bonuses} />
             )}
 
             <div className="flex items-center gap-2">
@@ -379,5 +414,103 @@ export function EmailSection({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function DealTermsPreview({
+  deal,
+  bonuses,
+}: {
+  deal: Deal;
+  bonuses: Bonus[];
+}) {
+  const rows: { label: string; value: string }[] = [];
+  if (deal.guaranteeAmount != null) {
+    rows.push({ label: "Guarantee", value: formatMoney(deal.guaranteeAmount) });
+  }
+  if (deal.percentage != null) {
+    rows.push({
+      label: "Percentage",
+      value: `${(deal.percentage * 100).toFixed(0)}%${
+        deal.percentageBasis ? ` of ${deal.percentageBasis.replace(/_/g, " ")}` : ""
+      }`,
+    });
+  }
+  if (deal.expenseCap != null) {
+    rows.push({ label: "Expense cap", value: formatMoney(deal.expenseCap) });
+  }
+  if (deal.hospitalityCap != null) {
+    rows.push({
+      label: "Hospitality cap",
+      value: formatMoney(deal.hospitalityCap),
+    });
+  }
+
+  return (
+    <div className="rounded-lg ring-1 ring-brand-200/60 bg-brand-50/30 p-3.5">
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <FileText className="h-3 w-3 text-brand-700" />
+        <div className="eyebrow text-[10px] text-brand-800">
+          Deal terms being confirmed
+        </div>
+      </div>
+      <div className="text-[11.5px] text-ink-500 mb-3 leading-relaxed">
+        Claude will reference these in the email and ask the agent to confirm
+        them in writing. Mariana can edit the body before sending.
+      </div>
+
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+        <div className="col-span-2">
+          <dt className="inline text-[10px] eyebrow text-ink-500 mr-2">
+            Deal type
+          </dt>
+          <dd className="inline text-[12px] text-ink-800 font-medium capitalize">
+            {deal.dealType.replace(/_/g, " ")}
+          </dd>
+        </div>
+        {rows.map((r) => (
+          <div key={r.label}>
+            <dt className="text-[10px] eyebrow text-ink-500 mb-0.5">
+              {r.label}
+            </dt>
+            <dd className="text-[12px] text-ink-800 font-mono tabular">
+              {r.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {bonuses.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-brand-200/40">
+          <div className="text-[10px] eyebrow text-ink-500 mb-1.5">
+            Bonuses ({bonuses.length})
+          </div>
+          <ul className="space-y-1">
+            {bonuses.map((b, i) => (
+              <li
+                key={i}
+                className="text-[11.5px] text-ink-700 leading-relaxed"
+              >
+                · {b.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {deal.dealNotesFreetext && (
+        <div className="mt-3 pt-3 border-t border-brand-200/40">
+          <div className="text-[10px] eyebrow text-ink-500 mb-1.5">
+            Original deal notes (Claude will check for anything ambiguous)
+          </div>
+          <div
+            className="text-[11.5px] text-ink-700 leading-relaxed line-clamp-4"
+            style={{ fontStyle: "italic" }}
+          >
+            {deal.dealNotesFreetext}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

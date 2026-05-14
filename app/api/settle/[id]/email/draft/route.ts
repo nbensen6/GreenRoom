@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getShowById } from "@/lib/queries";
+import { parseBonuses } from "@/lib/dealMath";
 import {
   EMAIL_INTENT_HINT,
   EMAIL_INTENT_LABELS,
@@ -13,10 +14,12 @@ Write a single email matching the requested intent. The audience is the artist's
 
 Use the structured context you're given: the artist name, show date, settlement status, dollar totals, recoups, signoff_text and notes, and any custom_context Mariana provides. Reference specific dollar figures and recoup line items by name when they matter to the ask. If the intent is to confirm a recoup interpretation, name the recoup and the two readings; don't be vague.
 
-Sign off as "Mariana" — no "Best regards" preamble unless it fits the warmth of the rest. End with the venue line ("Mariana Reyes\\nThe Crescent · Nashville") when the email is formal (review request, payment follow-up). Omit it on quick replies.
+If the intent is "confirm_deal_terms" (pre-show): this is BEFORE the show happens. There is no settlement yet. Restate the locked-in deal terms (guarantee, percentage and basis, expense cap, hospitality cap, structured bonuses) as a short bullet list inside the body, then ask the agent to confirm in writing that this matches the original offer. The point is to create a written paper trail before the show so settlement night doesn't become a negotiation. Reference any tricky language from the free-text notes that you want explicit confirmation on (e.g. whether a marketing recoup comes off gross or post-split). Don't restate settlement numbers — there aren't any yet.
+
+Sign off as "Mariana" — no "Best regards" preamble unless it fits the warmth of the rest. End with the venue line ("Mariana Reyes\\nThe Crescent · Nashville") when the email is formal (review request, payment follow-up, deal confirmation). Omit it on quick replies.
 
 OUTPUT
-Return one JSON object matching the schema. No prose preamble. Subject should be short and specific — name the artist + the topic ("Coastal Spell settlement — quick recoup question"). Body in plain text with \\n for line breaks; no markdown.`;
+Return one JSON object matching the schema. No prose preamble. Subject should be short and specific — name the artist + the topic ("Coastal Spell settlement — quick recoup question", "Coastal Spell · Confirming deal terms for Oct 18"). Body in plain text with \\n for line breaks; no markdown.`;
 
 const RESPONSE_SCHEMA = {
   type: "object",
@@ -90,6 +93,8 @@ function buildContext(
           percentage: deal.percentage,
           percentage_basis: deal.percentageBasis,
           expense_cap: deal.expenseCap,
+          hospitality_cap: deal.hospitalityCap,
+          bonuses: parseBonuses(deal),
           notes_freetext: deal.dealNotesFreetext ?? null,
         }
       : null,
@@ -114,6 +119,7 @@ function buildContext(
 }
 
 const VALID_INTENTS: EmailIntent[] = [
+  "confirm_deal_terms",
   "send_for_review",
   "follow_up_payment",
   "confirm_recoup",

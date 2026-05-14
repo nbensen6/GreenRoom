@@ -7,19 +7,15 @@ import {
   Clock,
   TrendingUp,
   Sparkles,
+  AlertTriangle,
+  Mail,
 } from "lucide-react";
 import { getShowById } from "@/lib/queries";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  Field,
-} from "@/components/ui/card";
+import { Field } from "@/components/ui/card";
+import { CollapsibleCard } from "@/components/ui/collapsible-card";
 import { StatusBadge, DealTypeBadge, PlainBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { parseBonuses } from "@/lib/dealMath";
+import { calculateSettlement, parseBonuses } from "@/lib/dealMath";
 import {
   formatMoney,
   formatMoneyCompact,
@@ -27,6 +23,20 @@ import {
   relativeShowDate,
 } from "@/lib/format";
 import type { Bonus } from "@/db/schema";
+import { ShowPipeline } from "./show-pipeline";
+import { parseReviewState } from "@/lib/settlement-review";
+import { ReviewStatusCard, SendForReviewButton } from "./settle/review-status";
+import { parseEmails } from "@/lib/settlement-emails";
+import { EmailSection } from "./settle/email-section";
+import { SettlementWorksheetCard } from "./settle/worksheet-card";
+import {
+  WorksheetHero,
+  WorksheetBody,
+  BonusesNotTriggeredBody,
+  UnsupportedDealBody,
+  RecoupsBody,
+  SignoffBody,
+} from "./settle/sections";
 
 const COMP_LABELS: Record<string, string> = {
   artist_gl: "Artist guest list",
@@ -57,6 +67,7 @@ export default async function ShowDetailPage({
     ticketSales,
     expenses,
     comps,
+    recoups,
   } = data;
 
   const grossSoFar = ticketSales.reduce((sum, t) => sum + t.gross, 0);
@@ -78,10 +89,34 @@ export default async function ShowDetailPage({
 
   const isDisputed = settlement?.status === "disputed";
 
+  const calc = deal
+    ? calculateSettlement({
+        deal,
+        ticketSales,
+        expenses,
+        venueCapacity: data.venue?.capacity ?? undefined,
+      })
+    : null;
+  const disputedRecoups = recoups.filter((r) => r.status === "disputed");
+  const disputedRecoupValue = disputedRecoups.reduce((s, r) => s + r.amount, 0);
+  const settlementIsDisputed =
+    settlement?.status === "disputed" ||
+    settlement?.status === "revised" ||
+    !!settlement?.disputedAt;
+  const review = settlement ? parseReviewState(settlement.reviewJson) : null;
+  const emails = settlement ? parseEmails(settlement.emailsJson) : [];
+
+  const showSettlementSection = !!deal;
+  const defaultRecipientName = agent
+    ? `${agent.name}${agency ? ` (${agency.name})` : ""}`
+    : "";
+
   return (
     <div className="max-w-7xl">
       {/* Poster header */}
-      <div className={`px-12 pt-10 pb-14 ${isDisputed ? "bg-gradient-to-b from-rose-50/40 to-canvas" : "bg-gradient-to-b from-brand-50/30 to-canvas"}`}>
+      <div
+        className={`px-12 pt-10 pb-14 ${isDisputed ? "bg-gradient-to-b from-rose-50/40 to-canvas" : "bg-gradient-to-b from-brand-50/30 to-canvas"}`}
+      >
         <Link
           href="/shows"
           className="inline-flex items-center gap-1 text-[12px] text-ink-400 hover:text-ink-900 mb-8 transition-colors"
@@ -94,9 +129,7 @@ export default async function ShowDetailPage({
             <div className="flex items-center gap-1.5 mb-4">
               <StatusBadge status={show.status} />
               {deal && <DealTypeBadge type={deal.dealType} />}
-              {isDisputed && (
-                <PlainBadge variant="rose">Disputed</PlainBadge>
-              )}
+              {isDisputed && <PlainBadge variant="rose">Disputed</PlainBadge>}
               {bonuses.length > 0 && (
                 <PlainBadge variant="brand">
                   {bonuses.length} bonus{bonuses.length === 1 ? "" : "es"}
@@ -110,7 +143,9 @@ export default async function ShowDetailPage({
               {artist?.name ?? "—"}
             </h1>
             <div className="text-[14px] text-ink-400 mt-3 flex items-center gap-2">
-              <span className="text-ink-600 font-medium">{formatShowDateFull(show.date)}</span>
+              <span className="text-ink-600 font-medium">
+                {formatShowDateFull(show.date)}
+              </span>
               <span className="text-ink-300">·</span>
               <span>{relativeShowDate(show.date)}</span>
               <span className="text-ink-200">·</span>
@@ -120,28 +155,39 @@ export default async function ShowDetailPage({
               </span>
             </div>
           </div>
-          <Link href={`/shows/${show.id}/settle`} className="mt-6 shrink-0">
-            <Button variant="brand" size="lg">
-              <FileSpreadsheet className="h-4 w-4" />
-              {settlement ? "View settlement" : "Settle show"}
-            </Button>
-          </Link>
+          {showSettlementSection && (
+            <Link href="#settlement" className="mt-6 shrink-0">
+              <Button variant="brand" size="lg">
+                <FileSpreadsheet className="h-4 w-4" />
+                {settlement ? "Jump to settlement" : "Open settlement"}
+              </Button>
+            </Link>
+          )}
         </div>
 
         {/* Key numbers strip */}
         <div className="flex items-baseline gap-10 mt-8 pt-5 border-t border-ink-200/40">
           <MiniStat label="Gross" value={formatMoneyCompact(grossSoFar)} />
           <MiniStat label="Tickets" value={String(totalTickets)} />
-          <MiniStat label="Expenses" value={formatMoneyCompact(totalExpenses)} />
+          <MiniStat
+            label="Expenses"
+            value={formatMoneyCompact(totalExpenses)}
+          />
           {settlement?.totalToArtist != null && (
-            <MiniStat label="To artist" value={formatMoneyCompact(settlement.totalToArtist)} accent />
+            <MiniStat
+              label="To artist"
+              value={formatMoneyCompact(settlement.totalToArtist)}
+              accent
+            />
           )}
         </div>
       </div>
 
       <div className="px-12 pb-12">
+        <ShowPipeline data={data} />
+
         {show.internalNotes && (
-          <div className="mb-8 mt-1 rounded-lg bg-amber-50/50 ring-1 ring-amber-200/60 p-5 flex gap-3">
+          <div className="mb-6 rounded-lg bg-amber-50/50 ring-1 ring-amber-200/60 p-5 flex gap-3">
             <AlertCircle className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
             <div>
               <div className="eyebrow text-[10px] text-amber-800 mb-1.5">
@@ -154,33 +200,59 @@ export default async function ShowDetailPage({
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-2">
-          {/* Deal terms */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <div>
-                <CardTitle>Deal terms</CardTitle>
-                <CardDescription>
-                  What was negotiated. Mariana enters this from the email
-                  thread with the agent.
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {deal && <DealTypeBadge type={deal.dealType} />}
-                {deal?.dealNotesFreetext && (
-                  <Link
-                    href={`/deals/analyze?showId=${show.id}`}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11.5px] font-medium ring-1 ring-inset bg-white text-ink-700 ring-ink-200/80 hover:bg-ink-50 transition-colors whitespace-nowrap"
-                  >
-                    <Sparkles className="h-3 w-3 text-brand-700" />
-                    Analyze with AI
-                  </Link>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-5">
+        {/* Email — cross-cutting communication tool, used at any point in the deal */}
+        {showSettlementSection && (
+          <div id="email" className="mb-8 scroll-mt-12">
+            <EmailSection
+              showId={show.id}
+              emails={emails}
+              defaultRecipientName={defaultRecipientName}
+              deal={deal ?? null}
+            />
+          </div>
+        )}
+
+        {/* ---------------- 1. Show details (pre-show) ---------------- */}
+        <section id="details" className="mt-2 scroll-mt-12">
+          <SectionHeader
+            eyebrow="1 · Pre-show"
+            title="Show details"
+            subtitle="What was negotiated, who's playing, and what's been sold so far. Locked in before show night."
+          />
+
+          <div className="space-y-5">
+            <CollapsibleCard
+              id="deal-terms"
+              title="Deal terms"
+              description="What was negotiated. Mariana enters this from the email thread with the agent."
+              badge={deal && <DealTypeBadge type={deal.dealType} />}
+              headerAction={
+                deal ? (
+                  <div className="flex items-center gap-1.5">
+                    {deal.dealNotesFreetext && (
+                      <Link
+                        href={`/deals/analyze?showId=${show.id}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11.5px] font-medium ring-1 ring-inset bg-white text-ink-700 ring-ink-200/80 hover:bg-ink-50 transition-colors whitespace-nowrap"
+                      >
+                        <Sparkles className="h-3 w-3 text-brand-700" />
+                        Analyze with AI
+                      </Link>
+                    )}
+                    <Link
+                      href={`?intent=confirm_deal_terms#email`}
+                      scroll={false}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11.5px] font-medium ring-1 ring-inset bg-white text-ink-700 ring-ink-200/80 hover:bg-ink-50 transition-colors whitespace-nowrap"
+                    >
+                      <Mail className="h-3 w-3 text-brand-700" />
+                      Email to confirm
+                    </Link>
+                  </div>
+                ) : null
+              }
+              defaultOpen
+            >
               {deal ? (
-                <>
+                <div className="space-y-5">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <Field
                       label="Guarantee"
@@ -244,8 +316,8 @@ export default async function ShowDetailPage({
                         <code className="font-mono text-[10px] bg-white/80 px-1 py-0.5 rounded ring-1 ring-ink-200/40">
                           bonuses_json
                         </code>
-                        . The in-app tool only reads structured bonuses — anything
-                        in the prose below is invisible to it.
+                        . The in-app tool only reads structured bonuses —
+                        anything in the prose below is invisible to it.
                       </div>
                     </div>
                   )}
@@ -255,48 +327,51 @@ export default async function ShowDetailPage({
                       <div className="eyebrow text-[10px] text-ink-500 mb-2">
                         Deal notes (free text — what Mariana actually trusts)
                       </div>
-                      <div className="text-[13px] text-ink-800 bg-canvas-soft rounded-lg p-4 ring-1 ring-ink-200/50 leading-relaxed font-[450]" style={{ fontStyle: "italic" }}>
+                      <div
+                        className="text-[13px] text-ink-800 bg-canvas-soft rounded-lg p-4 ring-1 ring-ink-200/50 leading-relaxed font-[450]"
+                        style={{ fontStyle: "italic" }}
+                      >
                         {deal.dealNotesFreetext}
                       </div>
                     </div>
                   )}
-                </>
+                </div>
               ) : (
                 <div className="text-[13px] text-ink-400">
                   No deal entered yet.
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </CollapsibleCard>
 
-          {/* Artist & agent */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Artist & agent</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Field label="Artist" value={artist?.name ?? "—"} />
-              <Field
-                label="Genre"
-                value={
-                  <span className="capitalize">{artist?.genre ?? "—"}</span>
-                }
-              />
-              <Field
-                label="Prior shows here"
-                value={String(artist?.priorShowCount ?? 0)}
-                mono
-              />
-              <Field
-                label="Agent"
-                value={
-                  agent
-                    ? `${agent.name}${agency ? ` · ${agency.name}` : ""}`
-                    : "—"
-                }
-              />
+            <CollapsibleCard
+              id="artist-agent"
+              title="Artist & agent"
+              defaultOpen={false}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <Field label="Artist" value={artist?.name ?? "—"} />
+                <Field
+                  label="Genre"
+                  value={
+                    <span className="capitalize">{artist?.genre ?? "—"}</span>
+                  }
+                />
+                <Field
+                  label="Prior shows here"
+                  value={String(artist?.priorShowCount ?? 0)}
+                  mono
+                />
+                <Field
+                  label="Agent"
+                  value={
+                    agent
+                      ? `${agent.name}${agency ? ` · ${agency.name}` : ""}`
+                      : "—"
+                  }
+                />
+              </div>
               {agent?.preferencesNotes && (
-                <div>
+                <div className="mt-5">
                   <div className="eyebrow text-[10px] text-ink-500 mb-2">
                     Agent notes
                   </div>
@@ -305,16 +380,14 @@ export default async function ShowDetailPage({
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </CollapsibleCard>
 
-          {/* Box office */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Box office</CardTitle>
-              <CardDescription>From integrated ticketing.</CardDescription>
-            </CardHeader>
-            <CardContent>
+            <CollapsibleCard
+              id="box-office"
+              title="Box office"
+              description="From integrated ticketing."
+              defaultOpen={false}
+            >
               <div className="space-y-3">
                 <div>
                   <div className="eyebrow text-[10px] text-ink-400">Gross</div>
@@ -345,17 +418,15 @@ export default async function ShowDetailPage({
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
+            </CollapsibleCard>
 
-          {/* Comps */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <div>
-                <CardTitle>Comps</CardTitle>
-                <CardDescription>
-                  {totalCompCount} comp tickets across {comps.length}{" "}
-                  categor{comps.length === 1 ? "y" : "ies"}.
+            <CollapsibleCard
+              id="comps"
+              title="Comps"
+              description={
+                <>
+                  {totalCompCount} comp tickets across {comps.length} categor
+                  {comps.length === 1 ? "y" : "ies"}.
                   {compsCountingTowardGross > 0 && (
                     <>
                       {" "}
@@ -364,13 +435,15 @@ export default async function ShowDetailPage({
                       </span>
                     </>
                   )}
-                </CardDescription>
-              </div>
-              <PlainBadge variant="default">
-                {totalCompCount} total
-              </PlainBadge>
-            </CardHeader>
-            <CardContent>
+                </>
+              }
+              badge={
+                <PlainBadge variant="default">
+                  {totalCompCount} total
+                </PlainBadge>
+              }
+              defaultOpen={false}
+            >
               {comps.length === 0 ? (
                 <div className="text-[13px] text-ink-400">
                   No comps recorded for this show.
@@ -379,10 +452,18 @@ export default async function ShowDetailPage({
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="text-left border-b border-ink-100/80">
-                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold">Category</th>
-                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold text-right">Count</th>
-                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold text-right">Face value</th>
-                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold text-right">Counts toward gross?</th>
+                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold">
+                        Category
+                      </th>
+                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold text-right">
+                        Count
+                      </th>
+                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold text-right">
+                        Face value
+                      </th>
+                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold text-right">
+                        Counts toward gross?
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-ink-100/60">
@@ -391,16 +472,22 @@ export default async function ShowDetailPage({
                         <td className="py-2.5">
                           {COMP_LABELS[c.category] ?? c.category}
                           {c.notes && (
-                            <span className="text-ink-400 ml-1">· {c.notes}</span>
+                            <span className="text-ink-400 ml-1">
+                              · {c.notes}
+                            </span>
                           )}
                         </td>
-                        <td className="py-2.5 text-right font-mono tabular">{c.count}</td>
+                        <td className="py-2.5 text-right font-mono tabular">
+                          {c.count}
+                        </td>
                         <td className="py-2.5 text-right font-mono tabular text-ink-500">
                           {formatMoney(c.faceValue * c.count)}
                         </td>
                         <td className="py-2.5 text-right">
                           {c.countsTowardGross ? (
-                            <span className="text-amber-700 font-medium">Yes</span>
+                            <span className="text-amber-700 font-medium">
+                              Yes
+                            </span>
                           ) : (
                             <span className="text-ink-400">No</span>
                           )}
@@ -410,25 +497,21 @@ export default async function ShowDetailPage({
                   </tbody>
                 </table>
               )}
-            </CardContent>
-          </Card>
+            </CollapsibleCard>
 
-          {/* Expenses */}
-          <Card className="md:col-span-3">
-            <CardHeader>
-              <div>
-                <CardTitle>Expenses</CardTitle>
-                <CardDescription>
-                  Entered during the week, often incompletely.
-                </CardDescription>
-              </div>
-              {absorbedTotal > 0 && (
-                <PlainBadge variant="amber">
-                  {formatMoney(absorbedTotal)} absorbed
-                </PlainBadge>
-              )}
-            </CardHeader>
-            <CardContent>
+            <CollapsibleCard
+              id="expenses"
+              title="Expenses"
+              description="Entered during the week, often incompletely."
+              badge={
+                absorbedTotal > 0 ? (
+                  <PlainBadge variant="amber">
+                    {formatMoney(absorbedTotal)} absorbed
+                  </PlainBadge>
+                ) : null
+              }
+              defaultOpen={false}
+            >
               {expenses.length === 0 ? (
                 <div className="text-[13px] text-ink-400">
                   No expenses entered yet.
@@ -437,9 +520,15 @@ export default async function ShowDetailPage({
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="text-left border-b border-ink-100/80">
-                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold">Category</th>
-                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold">Description</th>
-                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold text-right">Amount</th>
+                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold">
+                        Category
+                      </th>
+                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold">
+                        Description
+                      </th>
+                      <th className="py-2 eyebrow text-[10px] text-ink-400 font-semibold text-right">
+                        Amount
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-ink-100/60">
@@ -448,23 +537,167 @@ export default async function ShowDetailPage({
                         <td className="py-2.5 capitalize">
                           {e.category}
                           {e.absorbedByVenue && (
-                            <PlainBadge variant="amber" className="ml-2">absorbed</PlainBadge>
+                            <PlainBadge variant="amber" className="ml-2">
+                              absorbed
+                            </PlainBadge>
                           )}
                         </td>
-                        <td className="py-2.5 text-ink-500">{e.description ?? "—"}</td>
-                        <td className="py-2.5 text-right font-mono tabular">{formatMoney(e.amount)}</td>
+                        <td className="py-2.5 text-ink-500">
+                          {e.description ?? "—"}
+                        </td>
+                        <td className="py-2.5 text-right font-mono tabular">
+                          {formatMoney(e.amount)}
+                        </td>
                       </tr>
                     ))}
                     <tr className="font-medium">
-                      <td className="py-3" colSpan={2}>Total (passed through)</td>
-                      <td className="py-3 text-right font-mono tabular">{formatMoney(totalExpenses)}</td>
+                      <td className="py-3" colSpan={2}>
+                        Total (passed through)
+                      </td>
+                      <td className="py-3 text-right font-mono tabular">
+                        {formatMoney(totalExpenses)}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
               )}
-            </CardContent>
-          </Card>
-        </div>
+            </CollapsibleCard>
+          </div>
+        </section>
+
+        {/* ---------------- 2. Settlement (post-show) ---------------- */}
+        {showSettlementSection && (
+          <section id="settlement" className="mt-12 scroll-mt-12">
+            <SectionHeader
+              eyebrow="2 · Post-show"
+              title={settlement ? "Settle the show" : "Settlement preview"}
+              subtitle={
+                settlement
+                  ? "Reconcile, send for sign-off, and chase payment — all from one place."
+                  : "Forecast of what the artist owes based on the deal + sales so far."
+              }
+            />
+
+            {settlementIsDisputed && disputedRecoupValue > 0 && (
+              <div className="mb-5 rounded-lg border border-rose-200/60 bg-rose-50/40 p-5 flex gap-3">
+                <AlertTriangle className="h-4 w-4 text-rose-700 mt-0.5 shrink-0" />
+                <div>
+                  <div className="text-[13px] font-semibold text-rose-800">
+                    {disputedRecoups.length} recoup
+                    {disputedRecoups.length === 1 ? "" : "s"} in dispute ·{" "}
+                    {formatMoney(disputedRecoupValue)} contested
+                  </div>
+                  <p className="text-[12.5px] text-ink-600 mt-1 leading-relaxed">
+                    The artist team has flagged recoup line items. This
+                    settlement cannot be finalized until the dispute is
+                    resolved.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Hero number — only when calc is supported */}
+            {calc?.supported && (
+              <div className="mb-6 rounded-lg bg-white ring-1 ring-ink-200/60 px-6">
+                <WorksheetHero
+                  calc={calc}
+                  existingSettlement={settlement ?? null}
+                />
+              </div>
+            )}
+
+            <div className="space-y-5">
+              {/* a. Worksheet (with AI chip) */}
+              {calc && (
+                <SettlementWorksheetCard
+                  showId={show.id}
+                  title={
+                    calc.supported
+                      ? "Settlement worksheet"
+                      : "Worksheet inputs"
+                  }
+                  description={
+                    calc.supported ? (
+                      <span className="font-mono">{calc.finalFormula}</span>
+                    ) : undefined
+                  }
+                  accent={calc.supported ? "brand" : undefined}
+                  canAnalyze={!!settlement}
+                  defaultOpen
+                >
+                  {calc.supported ? (
+                    <WorksheetBody calc={calc} />
+                  ) : (
+                    <UnsupportedDealBody
+                      dealType={calc.dealType}
+                      deal={deal}
+                      existingSettlement={settlement ?? null}
+                      grossSoFar={grossSoFar}
+                      totalFees={totalFees}
+                      totalExpenses={totalExpenses}
+                      ticketCount={totalTickets}
+                      expenseRowCount={expenses.length}
+                    />
+                  )}
+                </SettlementWorksheetCard>
+              )}
+
+              {calc?.supported && calc.bonusesNotTriggered.length > 0 && (
+                <CollapsibleCard
+                  title="Bonuses not triggered"
+                  description="Structured bonuses on this deal that didn't hit. Shown for transparency — useful when the agent asks 'what about that gross threshold bonus?'"
+                  defaultOpen={false}
+                >
+                  <BonusesNotTriggeredBody calc={calc} />
+                </CollapsibleCard>
+              )}
+
+              {/* c. Recoups */}
+              {recoups.length > 0 && (
+                <CollapsibleCard
+                  id="recoups"
+                  accent={disputedRecoupValue > 0 ? "rose" : undefined}
+                  title="Recoups"
+                  description="Venue costs taken off the top before artist payment. Often the disputed line items."
+                  badge={
+                    <PlainBadge
+                      variant={disputedRecoupValue > 0 ? "rose" : "default"}
+                    >
+                      {formatMoney(recoups.reduce((s, r) => s + r.amount, 0))}{" "}
+                      total
+                    </PlainBadge>
+                  }
+                  defaultOpen
+                >
+                  <RecoupsBody recoups={recoups} />
+                </CollapsibleCard>
+              )}
+
+              {/* d. Pre-settlement review */}
+              {settlement && (
+                <div id="review" className="scroll-mt-12">
+                  {review ? (
+                    <ReviewStatusCard review={review} showId={show.id} />
+                  ) : (
+                    <SendForReviewButton showId={show.id} />
+                  )}
+                </div>
+              )}
+
+              {/* e. Sign-off & notes */}
+              {settlement && (settlement.signoffText || settlement.notes) && (
+                <CollapsibleCard
+                  id="signoff"
+                  title="Sign-off & notes"
+                  description="Captured signoff blurb plus Mariana's free-text notes."
+                  defaultOpen
+                >
+                  <SignoffBody settlement={settlement} />
+                </CollapsibleCard>
+              )}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
@@ -482,7 +715,9 @@ function MiniStat({
   return (
     <div>
       <div className="eyebrow text-[9px] text-ink-400">{label}</div>
-      <div className={`text-[18px] font-mono tabular font-semibold mt-0.5 leading-none ${accent ? "text-brand-700" : "text-ink-900"}`}>
+      <div
+        className={`text-[18px] font-mono tabular font-semibold mt-0.5 leading-none ${accent ? "text-brand-700" : "text-ink-900"}`}
+      >
         {value}
       </div>
     </div>
@@ -500,5 +735,32 @@ function BonusBadge({ type }: { type: Bonus["type"] }) {
     <span className="inline-flex shrink-0 items-center px-1.5 py-px rounded text-[9px] font-mono uppercase tracking-wider bg-white ring-1 ring-brand-200/50 text-brand-800">
       {labels[type]}
     </span>
+  );
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  subtitle,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="mb-5">
+      <div className="eyebrow text-[10px] text-ink-500 mb-1.5">{eyebrow}</div>
+      <h2
+        className="font-display text-[24px] font-medium text-ink-900 leading-tight"
+        style={{ letterSpacing: "-0.02em" }}
+      >
+        {title}
+      </h2>
+      {subtitle && (
+        <p className="text-[13px] text-ink-500 mt-1.5 leading-relaxed max-w-2xl">
+          {subtitle}
+        </p>
+      )}
+    </div>
   );
 }

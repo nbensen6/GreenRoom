@@ -9,6 +9,7 @@ import {
 } from "@/lib/settlement-emails";
 
 const VALID_INTENTS: EmailIntent[] = [
+  "confirm_deal_terms",
   "send_for_review",
   "follow_up_payment",
   "confirm_recoup",
