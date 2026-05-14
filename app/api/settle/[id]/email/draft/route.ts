@@ -16,6 +16,8 @@ Use the structured context you're given: the artist name, show date, settlement 
 
 If the intent is "confirm_deal_terms" (pre-show): this is BEFORE the show happens. There is no settlement yet. Restate the locked-in deal terms (guarantee, percentage and basis, expense cap, hospitality cap, structured bonuses) as a short bullet list inside the body, then ask the agent to confirm in writing that this matches the original offer. The point is to create a written paper trail before the show so settlement night doesn't become a negotiation. Reference any tricky language from the free-text notes that you want explicit confirmation on (e.g. whether a marketing recoup comes off gross or post-split). Don't restate settlement numbers — there aren't any yet.
 
+If the intent is "send_for_review": you are asking the agent to review the settlement line by line. Briefly summarize the headline numbers (gross, total to artist, anything contested) so they know what they're looking at, then include the review_url from the context as the call to action — formatted as a clean URL on its own line, preceded by "Review the line items here:" or similar. Tell them each line takes a quick accept-or-contest click; if they contest, they provide a reason inline. End with a clear ask for them to complete the review by a specific timeframe ("by end of week" works if no specific deadline). Do not embed the URL inside a markdown link — keep it as a raw URL since the body is plain text.
+
 Sign off as "Mariana" — no "Best regards" preamble unless it fits the warmth of the rest. End with the venue line ("Mariana Reyes\\nThe Crescent · Nashville") when the email is formal (review request, payment follow-up, deal confirmation). Omit it on quick replies.
 
 OUTPUT
@@ -64,6 +66,7 @@ function buildContext(
   data: NonNullable<Awaited<ReturnType<typeof getShowById>>>,
   intent: EmailIntent,
   customContext: string | undefined,
+  reviewUrl: string | null,
 ) {
   const { show, artist, agent, agency, deal, settlement, recoups } = data;
   return {
@@ -74,6 +77,9 @@ function buildContext(
         ? `Mariana's own framing: "${customContext}"`
         : EMAIL_INTENT_HINT[intent],
     custom_context: customContext || null,
+    // Absolute URL to the review form — Claude should include this verbatim
+    // in the body when intent is send_for_review.
+    review_url: reviewUrl,
     show: {
       date: show.date,
       status: show.status,
@@ -164,7 +170,16 @@ export async function POST(
     return NextResponse.json({ error: "Show not found" }, { status: 404 });
   }
 
-  const context = buildContext(data, intent, customContext);
+  // Build the absolute review URL from request headers so the link is
+  // clickable when sent over email (works locally and on Fly).
+  const host =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const proto =
+    request.headers.get("x-forwarded-proto") ??
+    (host?.startsWith("localhost") ? "http" : "https");
+  const reviewUrl = host ? `${proto}://${host}/shows/${id}/settle/review` : null;
+
+  const context = buildContext(data, intent, customContext, reviewUrl);
   const client = new Anthropic();
 
   try {

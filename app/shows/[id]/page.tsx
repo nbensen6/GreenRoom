@@ -27,6 +27,7 @@ import {
 import type { Bonus } from "@/db/schema";
 import { ShowPipeline } from "./show-pipeline";
 import { EmailToConfirmChip } from "./email-confirm-chip";
+import { SendForReviewChip } from "./send-for-review-chip";
 import { parseReviewState } from "@/lib/settlement-review";
 import { parseEmails } from "@/lib/settlement-emails";
 import { EmailSection } from "./settle/email-section";
@@ -747,17 +748,13 @@ function ReviewChip({
   showId: string;
   review: ReturnType<typeof parseReviewState>;
 }) {
+  // No review yet — chip opens the Email composer so Mariana can send the
+  // review request to the agent (the agent fills out the form, not Mariana).
   if (!review) {
-    return (
-      <Link
-        href={`/shows/${showId}/settle/review`}
-        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11.5px] font-medium ring-1 ring-inset bg-white text-ink-700 ring-ink-200/80 hover:bg-ink-50 transition-colors whitespace-nowrap"
-      >
-        <Send className="h-3 w-3 text-brand-700" />
-        Send for review
-      </Link>
-    );
+    return <SendForReviewChip />;
   }
+  // Review exists — chip is a link to the populated review form so Mariana
+  // (or the agent) can view / amend per-line decisions.
   const accepted = review.line_items.filter(
     (l) => l.status === "accepted",
   ).length;
