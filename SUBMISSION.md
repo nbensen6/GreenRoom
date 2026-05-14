@@ -4,6 +4,7 @@
 **Author:** Nick Bensen
 **Live demo:** [greenroom-case-study.fly.dev](https://greenroom-case-study.fly.dev) *(idle machines auto-sleep; first request may take ~2s to wake)*
 **Repo:** [github.com/nbensen6/GreenRoom](https://github.com/nbensen6/GreenRoom)
+**Walkthrough:** [Loom (7 min)](https://www.loom.com/share/130a4644d57a4e31af2b4b1c09604a0e)
 **Stack:** Next.js 16 · React 19 · TypeScript · Drizzle ORM (SQLite) · Anthropic SDK (Claude Opus 4.7)
 
 ---
