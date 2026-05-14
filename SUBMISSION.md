@@ -91,14 +91,12 @@ Latency: 8-20s per call. Cost: ~$0.02 first call, ~$0.018 cached.
 
 ---
 
-## What I deliberately didn't build
+## Where this product goes next
 
-- **Tier ratchet deal math** — needs new schema (threshold table) and the override row already handles it
-- **Auto-mutating settlement state** — every action remains under Mariana's control
-- **Real SMTP** — emails are simulated for the prototype, captured on the record
-- **Artist deep-dive history page** — sketched but out of scope; would be `/artists/[id]` showing all past deals and payouts as negotiation context
+Two features I scoped but didn't build, each with a clear path forward:
 
-These are tracked as v2 features. Each has a clear forward path that doesn't require revisiting v1.
+- **Tier ratchet deal math** — extends the math engine to handle percentage step-ups at ticket thresholds ("85% under 500 tickets, 90% above"). The current override row already covers this in practice, but native math means the AI deal parser can validate against ratchet tables instead of relying on Mariana to interpret free-text notes.
+- **Artist deep-dive history page** (`/artists/[id]`) — a per-artist view aggregating all past shows, deals, payouts, and bonus hit rates. The negotiation context Mariana wants when she's pricing a new deal: "last time they played here, the % beat the guarantee by $3k on a 78% sellout." Becomes especially valuable once Phase 5 (schema expansion for first-class recoup/bonus/ratchet fields) lands.
 
 ---
 
